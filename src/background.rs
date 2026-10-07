@@ -37,6 +37,17 @@ fn config() -> Option<&'static (PathBuf, f32)> {
 pub fn strength() -> Option<f32> {
     config().map(|(_, strength)| *strength)
 }
+/// How much black is laid over the wallpaper (0.0 to 1.0).
+fn dim() -> f32 {
+    static DIM: OnceLock<f32> = OnceLock::new();
+    *DIM.get_or_init(|| {
+        std::env::var("SPOTIFAST_BACKGROUND_DIM")
+            .ok()
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(0.35)
+            .clamp(0.0, 1.0)
+    })
+}
 
 fn load(ctx: &Context, path: &Path) -> Option<TextureHandle> {
     let decoded = match image::open(path) {
@@ -83,4 +94,10 @@ pub fn paint(ctx: &Context) {
     let uv = Rect::from_center_size(pos2(0.5, 0.5), visible);
     ctx.layer_painter(LayerId::background())
         .image(texture.id(), screen, uv, Color32::WHITE);
+    
+    let alpha = (dim() * 255.0) as u8;
+    if alpha > 0 {
+        ctx.layer_painter(LayerId::background())
+            .rect_filled(screen, 0.0, Color32::from_black_alpha(alpha));
+    }
 }

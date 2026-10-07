@@ -3216,6 +3216,11 @@ impl App {
     }
 
     fn apply_theme(&mut self, ctx: &egui::Context) {
+        crate::background::configure(
+            self.settings.background_image.as_deref(),
+            self.settings.background_strength,
+            self.settings.background_dim,
+        );
         // winit reports no system theme on Linux, so "Follow system" falls
         // back to what the desktop portal says.
         #[cfg(target_os = "linux")]

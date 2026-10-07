@@ -259,6 +259,15 @@ pub struct Settings {
         skip_serializing_if = "Option::is_none"
     )]
     pub system_theme_cache: Option<crate::theme::CustomTheme>,
+    /// A picture drawn behind the whole interface. `None` turns it off.
+    #[serde(default)]
+    pub background_image: Option<String>,
+    /// How much of the picture shows through the panels, 0.0 to 1.0.
+    #[serde(default = "default_background_strength")]
+    pub background_strength: f32,
+    /// How much black is laid over the picture, 0.0 to 1.0.
+    #[serde(default = "default_background_dim")]
+    pub background_dim: f32,
     pub home: HomeSettings,
     /// Tint the interface with the colour of the playing album's art.
     pub accent_from_art: bool,
@@ -425,6 +434,9 @@ impl Default for Settings {
             audio_cache: true,
             audio_cache_mb: 1024,
             theme: ThemeChoice::System,
+            background_image: None,
+            background_strength: default_background_strength(),
+            background_dim: default_background_dim(),
             language: LanguageChoice::System,
             custom_theme: None,
             custom_theme_cache: None,
@@ -496,6 +508,14 @@ impl Default for Settings {
 
 fn default_buffer_ms() -> u32 {
     crate::sink::DEFAULT_BUFFER_MS
+}
+
+fn default_background_strength() -> f32 {
+    0.6
+}
+
+fn default_background_dim() -> f32 {
+    0.45
 }
 
 impl Settings {

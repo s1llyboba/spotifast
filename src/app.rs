@@ -3241,6 +3241,10 @@ impl App {
                 Palette::light()
             }
         });
+        let palette = match crate::background::strength() {
+            Some(strength) => palette.see_through(strength),
+            None => palette,
+        };
         if self.applied_dark != Some(dark) || self.palette != palette {
             // The first colours need no reveal, and the mini player's window
             // is drawn by its skin.

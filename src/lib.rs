@@ -44,6 +44,7 @@ pub mod sink;
 pub mod skin;
 pub mod system_fonts;
 pub mod theme;
+pub mod background;
 pub mod thumbbar;
 pub mod ui;
 pub mod updates;

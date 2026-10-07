@@ -260,7 +260,7 @@ fn central(app: &mut App, ui: &mut egui::Ui) {
         .frame(Frame::new().fill(palette.window))
         .show(ui, |ui| {
             let rect = ui.max_rect();
-            if let Some(tint) = tint {
+                if let Some(tint) = tint.filter(|_| spotifast::background::strength().is_none()) {
                 let strength = if matches!(
                     app.page(),
                     Page::Home | Page::Search | Page::Settings | Page::Queue

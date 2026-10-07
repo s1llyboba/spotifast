@@ -1310,6 +1310,7 @@ impl eframe::App for Shell {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        spotifast::background::paint(ui.ctx());
         let app = &mut *self.app;
         app.frame_ui(ui);
         if let Some(receipt) = app.update_receipt.take() {

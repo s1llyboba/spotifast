@@ -79,6 +79,15 @@ impl Palette {
         }
     }
 
+    /// The same palette with the window and panel fills made translucent, so
+    /// a wallpaper behind them shows through.
+    pub fn see_through(mut self, strength: f32) -> Self {
+        let keep = 1.0 - strength.clamp(0.0, 1.0);
+        self.window = self.window.gamma_multiply(keep);
+        self.panel = self.panel.gamma_multiply(keep);
+        self
+    }
+    
     /// A colour derived from album art, softened so it can sit behind text.
     pub fn tint_from_art(&self, rgb: [u8; 3]) -> Color32 {
         let [r, g, b] = rgb.map(|c| c as f32 / 255.0);

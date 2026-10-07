@@ -193,6 +193,9 @@ fn section(
     ui.add_space(8.0);
 }
 
+/// A file the Browse dialog is still choosing: `None` while the dialog is
+/// open, `Some(None)` if it was cancelled, `Some(Some(path))` once a file is picked.
+type PickedFile = std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>;
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let locale = app.locale;
@@ -403,6 +406,126 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         app.actions.push(Action::ConfigurePersonalWebApp);
                     }
                 });
+            }
+        });
+    }
+
+    let background = gettext(locale, "Background");
+    let has_image = app.settings.background_image.is_some();
+    let background_rows = [
+        RowText::new(
+            gettext(locale, "Background image"),
+            gettext(
+                locale,
+                "Show a picture behind the whole interface. JPEG, PNG or BMP.",
+            ),
+        ),
+        RowText::new(
+            gettext(locale, "Panel transparency"),
+            gettext(locale, "How much of the picture shows through the panels."),
+        )
+        .when(has_image),
+        RowText::new(
+            gettext(locale, "Darken picture"),
+            gettext(
+                locale,
+                "Lay black over the picture so the text stays readable.",
+            ),
+        )
+        .when(has_image),
+    ];
+    if section_matches(&needle, &background, &background_rows) {
+        any_visible = true;
+        section(ui, &palette, &background, |ui| {
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &background,
+                &background_rows[0],
+                |ui| {
+                    let dialog_id = egui::Id::new("background-image-dialog");
+                    let picked = ui.data(|data| data.get_temp::<PickedFile>(dialog_id));
+                    if let Some(slot) = &picked {
+                        // Check back while the dialog is open.
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(100));
+                        let result = slot.lock().ok().and_then(|mut slot| slot.take());
+                        if let Some(result) = result {
+                            ui.data_mut(|data| data.remove_temp::<PickedFile>(dialog_id));
+                            if let Some(path) = result {
+                                app.settings.background_image = Some(path);
+                                changed = true;
+                            }
+                        }
+                    }
+                    let dialog_open = picked.is_some();
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        if has_image
+                            && theme::pill_button(ui, &palette, &gettext(locale, "Remove"), false)
+                                .clicked()
+                        {
+                            app.settings.background_image = None;
+                            changed = true;
+                        }
+                        if !dialog_open
+                            && theme::pill_button(ui, &palette, &gettext(locale, "Browse…"), true)
+                                .clicked()
+                        {
+                            let slot = PickedFile::default();
+                            ui.data_mut(|data| data.insert_temp(dialog_id, slot.clone()));
+                            let ctx = ui.ctx().clone();
+                            std::thread::spawn(move || {
+                                let file = rfd::FileDialog::new()
+                                    .add_filter("Pictures", &["jpg", "jpeg", "png", "bmp"])
+                                    .pick_file()
+                                    .map(|path| path.to_string_lossy().into_owned());
+                                if let Ok(mut slot) = slot.lock() {
+                                    *slot = Some(file);
+                                }
+                                ctx.request_repaint();
+                            });
+                        }
+                    });
+                },
+            );
+            if has_image {
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[1],
+                    |ui| {
+                        ui.spacing_mut().slider_width = 160.0;
+                        let slider = ui.add(
+                            egui::Slider::new(&mut app.settings.background_strength, 0.0..=1.0)
+                                .show_value(false),
+                        );
+                        // Saved when the drag ends, not on every frame of it.
+                        if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
+                            changed = true;
+                        }
+                    },
+                );
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[2],
+                    |ui| {
+                        ui.spacing_mut().slider_width = 160.0;
+                        let slider = ui.add(
+                            egui::Slider::new(&mut app.settings.background_dim, 0.0..=1.0)
+                                .show_value(false),
+                        );
+                        if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
+                            changed = true;
+                        }
+                    },
+                );
             }
         });
     }

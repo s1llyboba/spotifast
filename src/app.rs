@@ -3218,8 +3218,14 @@ impl App {
     fn apply_theme(&mut self, ctx: &egui::Context) {
         crate::background::configure(
             self.settings.background_image.as_deref(),
-            self.settings.background_strength,
-            self.settings.background_dim,
+            crate::background::Look {
+                strength: self.settings.background_strength,
+                dim: self.settings.background_dim,
+                fit: self.settings.background_fit,
+                zoom: self.settings.background_zoom,
+                x: self.settings.background_x,
+                y: self.settings.background_y,
+            },
         );
         // winit reports no system theme on Linux, so "Follow system" falls
         // back to what the desktop portal says.
@@ -3249,6 +3255,14 @@ impl App {
         let palette = match crate::background::strength() {
             Some(strength) => palette.see_through(strength),
             None => palette,
+        };
+        // A see-through window shows the desktop behind it, so every
+        // background fill gets some transparency. The mini player draws its
+        // own window, so it keeps the normal palette.
+        let palette = if self.settings.window_transparent && !self.settings.winamp_window {
+            palette.see_through_window(self.settings.window_opacity.clamp(0.1, 1.0))
+        } else {
+            palette
         };
         if self.applied_dark != Some(dark) || self.palette != palette {
             // The first colours need no reveal, and the mini player's window

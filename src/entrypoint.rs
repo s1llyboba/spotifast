@@ -550,6 +550,14 @@ pub(crate) fn run() -> eframe::Result<()> {
             #[cfg(feature = "demo")]
             let creator_shot = shot.clone();
             let mini = lease.peek(MiniWindow::wanted);
+            // A window's transparency is fixed when it is created, so the
+            // saved setting is read here. Changing it needs a restart.
+            let transparent = lease
+                .peek(|app| app.settings.window_transparent && !app.settings.winamp_window);
+            log::info!("Window transparency requested: {transparent}");
+            // Blur only makes sense on a see-through window.
+            #[cfg(windows)]
+            let blur = transparent && lease.peek(|app| app.settings.window_blur);
             #[cfg(all(windows, target_arch = "aarch64"))]
             let locale = lease.peek(|app| app.locale);
             #[cfg(feature = "demo")]
@@ -567,7 +575,10 @@ pub(crate) fn run() -> eframe::Result<()> {
             };
             #[cfg(not(feature = "demo"))]
             let options = native_options(false, mini, None);
-            let options = profile_options(options);
+            let mut options = profile_options(options);
+            if transparent {
+                options.viewport = options.viewport.with_transparent(true);
+            }
             let persist_memory = options.persist_window;
             #[cfg(windows)]
             let thumbbar_enabled = desktop_surfaces && options.viewport.taskbar != Some(false);
@@ -614,6 +625,20 @@ pub(crate) fn run() -> eframe::Result<()> {
                                 spotifast::window::supports_window_level(display.as_raw());
                             app.taskbar_hiding_supported =
                                 spotifast::window::supports_hiding_from_taskbar(display.as_raw());
+                        }
+                    }
+                    // Blur what is behind the window. Windows acrylic needs
+                    // the window to be transparent, which `transparent` above
+                    // has already asked for. A failure only costs the blur.
+                    #[cfg(windows)]
+                    if blur {
+                        use raw_window_handle::HasWindowHandle;
+                        if let Ok(handle) = cc.window_handle() {
+                            if let Err(error) =
+                                window_vibrancy::apply_acrylic(&handle, Some((18, 18, 18, 120)))
+                            {
+                                log::warn!("Could not blur the window: {error}");
+                            }
                         }
                     }
                     // winit hides a taskbar button on Windows only; X11 is
@@ -1326,9 +1351,11 @@ impl eframe::App for Shell {
     }
 
     /// The mini player's window is see-through where the skin leaves it
-    /// out; the big window paints itself over eframe's own ground.
+    /// out; the big window paints itself over eframe's own ground. With
+    /// window transparency on, the ground is clear too, and the panels'
+    /// own opacity decides how much of the desktop shows.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        if self.app.settings.winamp_window {
+        if self.app.settings.winamp_window || self.app.settings.window_transparent {
             [0.0; 4]
         } else {
             egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()

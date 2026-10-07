@@ -87,7 +87,23 @@ impl Palette {
         self.panel = self.panel.gamma_multiply(keep);
         self
     }
-    
+
+    /// The same palette with every background fill made translucent, for a
+    /// see-through window. `opacity` is how solid the interface stays: 1.0 is
+    /// the normal palette, and lower values show more of the desktop.
+    /// Text, icons and accent colours stay fully solid so they stay readable,
+    /// and menus and dialogs fade only half as much.
+    pub fn see_through_window(mut self, opacity: f32) -> Self {
+        let keep = opacity.clamp(0.0, 1.0);
+        self.window = self.window.gamma_multiply(keep);
+        self.panel = self.panel.gamma_multiply(keep);
+        self.surface = self.surface.gamma_multiply(keep);
+        self.surface_hover = self.surface_hover.gamma_multiply(keep);
+        self.surface_active = self.surface_active.gamma_multiply(keep);
+        self.overlay = self.overlay.gamma_multiply(0.5 + 0.5 * keep);
+        self
+    }
+
     /// A colour derived from album art, softened so it can sit behind text.
     pub fn tint_from_art(&self, rgb: [u8; 3]) -> Color32 {
         let [r, g, b] = rgb.map(|c| c as f32 / 255.0);

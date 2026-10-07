@@ -9,19 +9,54 @@ use std::sync::Mutex;
 /// The longest edge a wallpaper is shrunk to before it is uploaded.
 const MAX_EDGE: u32 = 2560;
 
+/// How the picture is sized to the window.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Fit {
+    /// Fill the window, cropping what overflows.
+    #[default]
+    Cover,
+    /// Show the whole picture inside the window.
+    Contain,
+    /// Stretch to the window, ignoring the picture's shape.
+    Stretch,
+}
+
+/// Everything about how the wallpaper looks.
+#[derive(Clone, Copy, Debug)]
+pub struct Look {
+    /// How much of the picture shows through the panels, 0.0 to 1.0.
+    pub strength: f32,
+    /// How much black is laid over the picture, 0.0 to 1.0.
+    pub dim: f32,
+    pub fit: Fit,
+    /// Magnification on top of the fit, 1.0 and up.
+    pub zoom: f32,
+    /// Where the picture sits, 0.0 (left or top) to 1.0 (right or bottom).
+    pub x: f32,
+    pub y: f32,
+}
+
 struct Config {
     path: Option<PathBuf>,
     /// The file exists, checked when the path changes rather than every frame.
     usable: bool,
-    strength: f32,
-    dim: f32,
+    look: Look,
 }
 
 static CONFIG: Mutex<Config> = Mutex::new(Config {
     path: None,
     usable: false,
-    strength: 0.6,
-    dim: 0.45,
+    look: Look {
+        strength: 0.6,
+        dim: 0.45,
+        fit: Fit::Cover,
+        zoom: 1.0,
+        x: 0.5,
+        y: 0.5,
+    },
 });
 
 fn config() -> std::sync::MutexGuard<'static, Config> {
@@ -29,7 +64,7 @@ fn config() -> std::sync::MutexGuard<'static, Config> {
 }
 
 /// Sets the wallpaper from the settings. Cheap enough to call every frame.
-pub fn configure(path: Option<&str>, strength: f32, dim: f32) {
+pub fn configure(path: Option<&str>, look: Look) {
     let path = path
         .map(str::trim)
         .filter(|path| !path.is_empty())
@@ -46,15 +81,21 @@ pub fn configure(path: Option<&str>, strength: f32, dim: f32) {
         };
         config.path = path;
     }
-    config.strength = strength.clamp(0.0, 1.0);
-    config.dim = dim.clamp(0.0, 1.0);
+    config.look = Look {
+        strength: look.strength.clamp(0.0, 1.0),
+        dim: look.dim.clamp(0.0, 1.0),
+        fit: look.fit,
+        zoom: look.zoom.clamp(1.0, 4.0),
+        x: look.x.clamp(0.0, 1.0),
+        y: look.y.clamp(0.0, 1.0),
+    };
 }
 
 /// How much of the wallpaper shows through the panels, or `None` when no
 /// wallpaper is set.
 pub fn strength() -> Option<f32> {
     let config = config();
-    config.usable.then_some(config.strength)
+    config.usable.then_some(config.look.strength)
 }
 
 fn load(ctx: &Context, path: &Path) -> Option<TextureHandle> {
@@ -77,10 +118,10 @@ fn load(ctx: &Context, path: &Path) -> Option<TextureHandle> {
 /// Paints the wallpaper over the whole window, below every panel. Call it
 /// once per frame, before the panels are drawn.
 pub fn paint(ctx: &Context) {
-    let (path, dim) = {
+    let (path, look) = {
         let config = config();
         match (&config.path, config.usable) {
-            (Some(path), true) => (path.clone(), config.dim),
+            (Some(path), true) => (path.clone(), config.look),
             _ => return,
         }
     };
@@ -98,19 +139,30 @@ pub fn paint(ctx: &Context) {
         return;
     };
 
-    // "Cover" fit: fill the window and crop what overflows.
     let screen = ctx.content_rect();
     let image = texture.size_vec2();
-    let scale = (screen.width() / image.x).max(screen.height() / image.y);
-    let visible = vec2(
-        screen.width() / (image.x * scale),
-        screen.height() / (image.y * scale),
-    );
-    let uv = Rect::from_center_size(pos2(0.5, 0.5), visible);
-    let painter = ctx.layer_painter(LayerId::background());
-    painter.image(texture.id(), screen, uv, Color32::WHITE);
+    let size = match look.fit {
+        Fit::Cover => image * (screen.width() / image.x).max(screen.height() / image.y),
+        Fit::Contain => image * (screen.width() / image.x).min(screen.height() / image.y),
+        Fit::Stretch => screen.size(),
+    } * look.zoom;
+    // Where the picture's corner lands: with the picture larger than the
+    // window, position 0 shows its left or top edge and 1 its right or
+    // bottom; smaller than the window, it slides inside the free space.
+    let extra = size - screen.size();
+    let min = screen.min - vec2(extra.x * look.x, extra.y * look.y);
+    let destination = Rect::from_min_size(min, size);
 
-    let alpha = (dim * 255.0) as u8;
+    let painter = ctx
+        .layer_painter(LayerId::background())
+        .with_clip_rect(screen);
+    painter.image(
+        texture.id(),
+        destination,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
+    let alpha = (look.dim * 255.0) as u8;
     if alpha > 0 {
         painter.rect_filled(screen, 0.0, Color32::from_black_alpha(alpha));
     }

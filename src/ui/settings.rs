@@ -196,6 +196,17 @@ fn section(
 /// A file the Browse dialog is still choosing: `None` while the dialog is
 /// open, `Some(None)` if it was cancelled, `Some(Some(path))` once a file is picked.
 type PickedFile = std::sync::Arc<std::sync::Mutex<Option<Option<String>>>>;
+/// A slider that reports when the user lets go, so settings are saved once
+/// per drag and not on every frame of it.
+fn background_slider(
+    ui: &mut egui::Ui,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> bool {
+    ui.spacing_mut().slider_width = 160.0;
+    let slider = ui.add(egui::Slider::new(value, range).show_value(false));
+    slider.drag_stopped() || (slider.changed() && !slider.dragged())
+}
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let locale = app.locale;
@@ -410,6 +421,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
     }
 
+    use crate::background::Fit;
     let background = gettext(locale, "Background");
     let has_image = app.settings.background_image.is_some();
     let background_rows = [
@@ -420,6 +432,29 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "Show a picture behind the whole interface. JPEG, PNG or BMP.",
             ),
         ),
+        RowText::new(
+            gettext(locale, "Image size"),
+            gettext(
+                locale,
+                "Fill crops the picture to the window, Fit shows all of it, Stretch distorts it.",
+            ),
+        )
+        .when(has_image),
+        RowText::new(
+            gettext(locale, "Zoom"),
+            gettext(locale, "Magnify the picture."),
+        )
+        .when(has_image),
+        RowText::new(
+            gettext(locale, "Horizontal position"),
+            gettext(locale, "Slide the picture left or right."),
+        )
+        .when(has_image),
+        RowText::new(
+            gettext(locale, "Vertical position"),
+            gettext(locale, "Slide the picture up or down."),
+        )
+        .when(has_image),
         RowText::new(
             gettext(locale, "Panel transparency"),
             gettext(locale, "How much of the picture shows through the panels."),
@@ -491,6 +526,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 },
             );
             if has_image {
+                let fits = [
+                    (Fit::Cover, gettext(locale, "Fill")),
+                    (Fit::Contain, gettext(locale, "Fit")),
+                    (Fit::Stretch, gettext(locale, "Stretch")),
+                ];
                 filtered_row(
                     ui,
                     &palette,
@@ -498,15 +538,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &background,
                     &background_rows[1],
                     |ui| {
-                        ui.spacing_mut().slider_width = 160.0;
-                        let slider = ui.add(
-                            egui::Slider::new(&mut app.settings.background_strength, 0.0..=1.0)
-                                .show_value(false),
-                        );
-                        // Saved when the drag ends, not on every frame of it.
-                        if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
-                            changed = true;
-                        }
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 6.0;
+                            // Laid right to left, so the last choice goes first.
+                            for (fit, label) in fits.iter().rev() {
+                                if theme::soft_button(
+                                    ui,
+                                    &palette,
+                                    None,
+                                    label,
+                                    app.settings.background_fit == *fit,
+                                )
+                                .clicked()
+                                    && app.settings.background_fit != *fit
+                                {
+                                    app.settings.background_fit = *fit;
+                                    changed = true;
+                                }
+                            }
+                        });
                     },
                 );
                 filtered_row(
@@ -516,20 +566,168 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &background,
                     &background_rows[2],
                     |ui| {
-                        ui.spacing_mut().slider_width = 160.0;
-                        let slider = ui.add(
-                            egui::Slider::new(&mut app.settings.background_dim, 0.0..=1.0)
-                                .show_value(false),
+                        changed |=
+                            background_slider(ui, &mut app.settings.background_zoom, 1.0..=3.0);
+                    },
+                );
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[3],
+                    |ui| {
+                        changed |=
+                            background_slider(ui, &mut app.settings.background_x, 0.0..=1.0);
+                    },
+                );
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[4],
+                    |ui| {
+                        changed |=
+                            background_slider(ui, &mut app.settings.background_y, 0.0..=1.0);
+                    },
+                );
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[5],
+                    |ui| {
+                        changed |= background_slider(
+                            ui,
+                            &mut app.settings.background_strength,
+                            0.0..=1.0,
                         );
-                        if slider.drag_stopped() || (slider.changed() && !slider.dragged()) {
-                            changed = true;
-                        }
+                    },
+                );
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &background,
+                    &background_rows[6],
+                    |ui| {
+                        changed |=
+                            background_slider(ui, &mut app.settings.background_dim, 0.0..=1.0);
                     },
                 );
             }
         });
     }
-
+    let window_title = gettext(locale, "Window");
+    let window_rows = [
+        RowText::new(
+            gettext(locale, "Transparent window"),
+            gettext(
+                locale,
+                "Let the apps behind Spotifast show through. Takes effect after you quit and open Spotifast again.",
+            ),
+        ),
+        RowText::new(
+            gettext(locale, "Window opacity"),
+            gettext(
+                locale,
+                "How solid the interface is. Lower shows more of what is behind it.",
+            ),
+        )
+        .when(app.settings.window_transparent),
+        RowText::new(
+            gettext(locale, "Blur behind window"),
+            gettext(
+                locale,
+                "Blur the apps behind Spotifast. Windows only. Can make moving and resizing feel slower.",
+            ),
+        )
+        .when(cfg!(windows) && app.settings.window_transparent),
+    ];
+    if section_matches(&needle, &window_title, &window_rows) {
+        any_visible = true;
+        // What the window was created with: the first time this page is drawn
+        // in a session, the settings still hold the values it started with.
+        let started_id = egui::Id::new("window-settings-at-start");
+        let started = ui
+            .data(|data| data.get_temp::<(bool, bool)>(started_id))
+            .unwrap_or((app.settings.window_transparent, app.settings.window_blur));
+        ui.data_mut(|data| data.insert_temp(started_id, started));
+        section(ui, &palette, &window_title, |ui| {
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &window_title,
+                &window_rows[0],
+                |ui| {
+                    if widgets::switch(
+                        ui,
+                        &palette,
+                        &gettext(locale, "Transparent window"),
+                        &mut app.settings.window_transparent,
+                    )
+                    .changed()
+                    {
+                        changed = true;
+                    }
+                },
+            );
+            if app.settings.window_transparent {
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &window_title,
+                    &window_rows[1],
+                    |ui| {
+                        changed |=
+                            background_slider(ui, &mut app.settings.window_opacity, 0.1..=1.0);
+                    },
+                );
+            }
+            if cfg!(windows) && app.settings.window_transparent {
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &window_title,
+                    &window_rows[2],
+                    |ui| {
+                        if widgets::switch(
+                            ui,
+                            &palette,
+                            &gettext(locale, "Blur behind window"),
+                            &mut app.settings.window_blur,
+                        )
+                        .changed()
+                        {
+                            changed = true;
+                        }
+                    },
+                );
+            }
+            let needs_restart =
+                (app.settings.window_transparent, app.settings.window_blur) != started;
+            if needs_restart {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if theme::pill_button(ui, &palette, &gettext(locale, "Quit Spotifast"), true)
+                        .clicked()
+                    {
+                        app.actions.push(Action::Quit);
+                    }
+                    theme::subtle(
+                        ui,
+                        &palette,
+                        &gettext(locale, "Quit and open Spotifast again to apply this."),
+                    );
+                });
+            }
+        });
+    }   
     let (status, detail, action) = match &app.local_playback {
         crate::backend::LocalPlayback::Ready { .. } => (
             pgettext(locale, "playback status", "Ready"),

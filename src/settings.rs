@@ -268,6 +268,27 @@ pub struct Settings {
     /// How much black is laid over the picture, 0.0 to 1.0.
     #[serde(default = "default_background_dim")]
     pub background_dim: f32,
+    /// How the picture is sized: fill the window, fit inside it, or stretch.
+    #[serde(default)]
+    pub background_fit: crate::background::Fit,
+    /// Magnification on top of the fit, 1.0 to 3.0.
+    #[serde(default = "default_background_zoom")]
+    pub background_zoom: f32,
+    /// Where the picture sits, 0.0 (left) to 1.0 (right).
+    #[serde(default = "default_background_center")]
+    pub background_x: f32,
+    /// Where the picture sits, 0.0 (top) to 1.0 (bottom).
+    #[serde(default = "default_background_center")]
+    pub background_y: f32,
+    /// Lets the desktop show through the window. Needs a restart.
+    #[serde(default)]
+    pub window_transparent: bool,
+    /// How solid the window is when transparency is on, 0.0 to 1.0.
+    #[serde(default = "default_window_opacity")]
+    pub window_opacity: f32,
+    /// Blurs what is behind the window. Windows only.
+    #[serde(default)]
+    pub window_blur: bool,
     pub home: HomeSettings,
     /// Tint the interface with the colour of the playing album's art.
     pub accent_from_art: bool,
@@ -437,6 +458,13 @@ impl Default for Settings {
             background_image: None,
             background_strength: default_background_strength(),
             background_dim: default_background_dim(),
+            background_fit: crate::background::Fit::Cover,
+            background_zoom: default_background_zoom(),
+            background_x: default_background_center(),
+            background_y: default_background_center(),
+            window_transparent: false,
+            window_opacity: default_window_opacity(),
+            window_blur: false,
             language: LanguageChoice::System,
             custom_theme: None,
             custom_theme_cache: None,
@@ -516,6 +544,18 @@ fn default_background_strength() -> f32 {
 
 fn default_background_dim() -> f32 {
     0.45
+}
+
+fn default_background_zoom() -> f32 {
+    1.0
+}
+
+fn default_background_center() -> f32 {
+    0.5
+}
+
+fn default_window_opacity() -> f32 {
+    0.85
 }
 
 impl Settings {
